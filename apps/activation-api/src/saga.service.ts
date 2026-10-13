@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { createEvent, type DomainEvent, type EventType } from '@app/contracts';
 import { EventPublisher } from '@app/kafka-toolkit';
 import { Activation } from './activation.schema.js';
+import { ActivationGateway } from './activation.gateway.js';
 
 type Step = 'billing' | 'provisioning';
 
@@ -22,6 +23,7 @@ export class ActivationSagaService {
   constructor(
     @InjectModel(Activation.name) private readonly model: Model<Activation>,
     private readonly publisher: EventPublisher,
+    private readonly gateway: ActivationGateway,
   ) {}
 
   async onServiceEvent(event: DomainEvent) {
@@ -31,7 +33,20 @@ export class ActivationSagaService {
 
     // Eventos que no son un resultado (p. ej. BillingAccountCancelled): solo historial
     if (!result) {
-      await this.model.updateOne({ _id: id }, { $push: { history: entry } });
+      const d = await this.model.findOneAndUpdate(
+        { _id: id },
+        { $push: { history: entry } },
+        { new: true },
+      );
+      if (d) {
+        this.gateway.notify({
+          activationId: id,
+          customerId: event.customerId,
+          eventType: event.eventType,
+          at: event.occurredAt,
+          status: d.status,
+        });
+      }
       return;
     }
 
@@ -49,8 +64,17 @@ export class ActivationSagaService {
       return;
     }
 
-    // 2) Con el primer resultado: PENDING -> IN_PROGRESS (si ya no está en otro estado, no hace nada)
+    // 2) Con el primer resultado: PENDING -> IN_PROGRESS
     await this.model.updateOne({ _id: id, status: 'PENDING' }, { $set: { status: 'IN_PROGRESS' } });
+
+    // Avisar a la UI del evento recién recibido
+    this.gateway.notify({
+      activationId: id,
+      customerId: event.customerId,
+      eventType: event.eventType,
+      at: event.occurredAt,
+      status: doc.status === 'PENDING' ? 'IN_PROGRESS' : doc.status,
+    });
 
     // 3) Decidir
     if (!result.ok) {
@@ -63,11 +87,12 @@ export class ActivationSagaService {
 
   // Con el primer fallo: FAILED + ActivationFailed. Si ya estaba FAILED, se ignora.
   private async fail(id: string, customerId: string, failedStep: Step, reason: string) {
+    const at = new Date().toISOString();
     const failed = await this.model.findOneAndUpdate(
       { _id: id, status: { $in: ['PENDING', 'IN_PROGRESS'] } },
       {
         $set: { status: 'FAILED' },
-        $push: { history: { eventType: 'ActivationFailed', at: new Date().toISOString() } },
+        $push: { history: { eventType: 'ActivationFailed', at } },
       },
       { new: true },
     );
@@ -82,10 +107,12 @@ export class ActivationSagaService {
         payload: { reason, failedStep },
       }),
     );
+    this.gateway.notify({ activationId: id, customerId, eventType: 'ActivationFailed', at, status: 'FAILED' });
   }
 
   // Con billing y provisioning OK: ACTIVE + ActivationCompleted
   private async tryComplete(id: string, customerId: string) {
+    const at = new Date().toISOString();
     const done = await this.model.findOneAndUpdate(
       {
         _id: id,
@@ -95,7 +122,7 @@ export class ActivationSagaService {
       },
       {
         $set: { status: 'ACTIVE' },
-        $push: { history: { eventType: 'ActivationCompleted', at: new Date().toISOString() } },
+        $push: { history: { eventType: 'ActivationCompleted', at } },
       },
       { new: true },
     );
@@ -110,5 +137,6 @@ export class ActivationSagaService {
         payload: { planId: done.planId },
       }),
     );
+    this.gateway.notify({ activationId: id, customerId, eventType: 'ActivationCompleted', at, status: 'ACTIVE' });
   }
 }

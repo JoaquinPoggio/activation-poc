@@ -6,6 +6,7 @@ import { ActivationsController } from './activations.controller.js';
 import { ActivationsService } from './activations.service.js';
 import { ActivationEventsController } from './activation-events.controller.js';
 import { ActivationSagaService } from './saga.service.js';
+import { ActivationGateway } from './activation.gateway.js';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { ActivationSagaService } from './saga.service.js';
     KafkaToolkitModule.forService('activation-api'),
   ],
   controllers: [ActivationsController, ActivationEventsController],
-  providers: [ActivationsService, ActivationSagaService],
+  providers: [ActivationsService, ActivationSagaService, ActivationGateway],
 })
 export class ActivationApiModule {}
