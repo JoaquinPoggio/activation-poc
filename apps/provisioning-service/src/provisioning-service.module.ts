@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { KafkaToolkitModule } from '@app/kafka-toolkit';
+import { KafkaToolkitModule, IdempotencyModule } from '@app/kafka-toolkit';
 import { ProvisioningOrder, ProvisioningOrderSchema } from './provisioning.schema.js';
 import { ProvisioningController } from './provisioning.controller.js';
 import { ProvisioningService } from './provisioning.service.js';
@@ -14,6 +14,7 @@ import { ProvisioningService } from './provisioning.service.js';
       { name: ProvisioningOrder.name, schema: ProvisioningOrderSchema },
     ]),
     KafkaToolkitModule.forService('provisioning-service'),
+    IdempotencyModule,
   ],
   controllers: [ProvisioningController],
   providers: [ProvisioningService],

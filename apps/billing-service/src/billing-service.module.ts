@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { KafkaToolkitModule } from '@app/kafka-toolkit';
+import { KafkaToolkitModule, IdempotencyModule } from '@app/kafka-toolkit';
 import { BillingAccount, BillingAccountSchema } from './billing.schema.js';
 import { BillingController } from './billing.controller.js';
 import { BillingService } from './billing.service.js';
@@ -14,6 +14,7 @@ import { BillingService } from './billing.service.js';
       { name: BillingAccount.name, schema: BillingAccountSchema },
     ]),
     KafkaToolkitModule.forService('billing-service'),
+    IdempotencyModule,
   ],
   controllers: [BillingController],
   providers: [BillingService],

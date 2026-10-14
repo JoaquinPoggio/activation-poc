@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { KafkaToolkitModule } from '@app/kafka-toolkit';
+import { KafkaToolkitModule, IdempotencyModule } from '@app/kafka-toolkit';
 import { Activation, ActivationSchema } from './activation.schema.js';
 import { ActivationsController } from './activations.controller.js';
 import { ActivationsService } from './activations.service.js';
@@ -16,6 +16,7 @@ import { ActivationGateway } from './activation.gateway.js';
     ),
     MongooseModule.forFeature([{ name: Activation.name, schema: ActivationSchema }]),
     KafkaToolkitModule.forService('activation-api'),
+    IdempotencyModule,
   ],
   controllers: [ActivationsController, ActivationEventsController],
   providers: [ActivationsService, ActivationSagaService, ActivationGateway],

@@ -2,6 +2,7 @@ import { DynamicModule, Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { kafkaEnv } from './kafka.config.js';
 import { EventPublisher, KAFKA_CLIENT } from './event-publisher.js';
+import { ResilientConsumer, SERVICE_NAME } from './resilient-consumer.js';
 
 @Module({})
 export class KafkaToolkitModule {
@@ -26,8 +27,12 @@ export class KafkaToolkitModule {
           },
         ]),
       ],
-      providers: [EventPublisher],
-      exports: [EventPublisher],
+      providers: [
+        EventPublisher,
+        ResilientConsumer,
+        { provide: SERVICE_NAME, useValue: serviceName },
+      ],
+      exports: [EventPublisher, ResilientConsumer],
     };
   }
 }

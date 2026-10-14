@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type { ClientSession } from 'mongoose';
 import { createEvent, type DomainEvent, type EventType } from '@app/contracts';
-import { EventPublisher } from '@app/kafka-toolkit';
+import { EventPublisher, IdempotencyService } from '@app/kafka-toolkit';
 import { Activation } from './activation.schema.js';
 import { ActivationGateway } from './activation.gateway.js';
 
@@ -24,9 +25,19 @@ export class ActivationSagaService {
     @InjectModel(Activation.name) private readonly model: Model<Activation>,
     private readonly publisher: EventPublisher,
     private readonly gateway: ActivationGateway,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   async onServiceEvent(event: DomainEvent) {
+    const first = await this.idempotency.runOnce(event.eventId, (session) =>
+      this.handle(event, session),
+    );
+    if (!first) {
+      this.logger.warn(`Evento repetido ${event.eventType} [${event.correlationId}]: descartado`);
+    }
+  }
+
+  private async handle(event: DomainEvent, session: ClientSession) {
     const id = event.correlationId;
     const entry = { eventType: event.eventType, at: event.occurredAt };
     const result = RESULTS[event.eventType];
@@ -36,7 +47,7 @@ export class ActivationSagaService {
       const d = await this.model.findOneAndUpdate(
         { _id: id },
         { $push: { history: entry } },
-        { new: true },
+        { new: true, session },
       );
       if (d) {
         this.gateway.notify({
@@ -57,7 +68,7 @@ export class ActivationSagaService {
         $set: { [`steps.${result.step}`]: { status: result.ok ? 'OK' : 'FAILED', at: event.occurredAt } },
         $push: { history: entry },
       },
-      { new: true },
+      { new: true, session },
     );
     if (!doc) {
       this.logger.warn(`Evento ${event.eventType} para una activación desconocida [${id}]`);
@@ -65,7 +76,11 @@ export class ActivationSagaService {
     }
 
     // 2) Con el primer resultado: PENDING -> IN_PROGRESS
-    await this.model.updateOne({ _id: id, status: 'PENDING' }, { $set: { status: 'IN_PROGRESS' } });
+    await this.model.updateOne(
+      { _id: id, status: 'PENDING' },
+      { $set: { status: 'IN_PROGRESS' } },
+      { session },
+    );
 
     // Avisar a la UI del evento recién recibido
     this.gateway.notify({
@@ -79,14 +94,20 @@ export class ActivationSagaService {
     // 3) Decidir
     if (!result.ok) {
       const reason = 'reason' in event.payload ? String(event.payload.reason) : 'sin motivo';
-      await this.fail(id, event.customerId, result.step, reason);
+      await this.fail(id, event.customerId, result.step, reason, session);
     } else {
-      await this.tryComplete(id, event.customerId);
+      await this.tryComplete(id, event.customerId, session);
     }
   }
 
   // Con el primer fallo: FAILED + ActivationFailed. Si ya estaba FAILED, se ignora.
-  private async fail(id: string, customerId: string, failedStep: Step, reason: string) {
+  private async fail(
+    id: string,
+    customerId: string,
+    failedStep: Step,
+    reason: string,
+    session: ClientSession,
+  ) {
     const at = new Date().toISOString();
     const failed = await this.model.findOneAndUpdate(
       { _id: id, status: { $in: ['PENDING', 'IN_PROGRESS'] } },
@@ -94,7 +115,7 @@ export class ActivationSagaService {
         $set: { status: 'FAILED' },
         $push: { history: { eventType: 'ActivationFailed', at } },
       },
-      { new: true },
+      { new: true, session },
     );
     if (!failed) return; // otro resultado ya la había dado por fallida
 
@@ -111,7 +132,7 @@ export class ActivationSagaService {
   }
 
   // Con billing y provisioning OK: ACTIVE + ActivationCompleted
-  private async tryComplete(id: string, customerId: string) {
+  private async tryComplete(id: string, customerId: string, session: ClientSession) {
     const at = new Date().toISOString();
     const done = await this.model.findOneAndUpdate(
       {
@@ -124,7 +145,7 @@ export class ActivationSagaService {
         $set: { status: 'ACTIVE' },
         $push: { history: { eventType: 'ActivationCompleted', at } },
       },
-      { new: true },
+      { new: true, session },
     );
     if (!done) return; // todavía falta el otro servicio, o ya estaba terminada
 

@@ -55,6 +55,15 @@
         "tsConfigPath": "libs/kafka-toolkit/tsconfig.lib.json"
       }
     },
+    "loyalty-service": {
+      "type": "application",
+      "root": "apps/loyalty-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/loyalty-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/loyalty-service/tsconfig.app.json"
+      }
+    },
     "notification-service": {
       "type": "application",
       "root": "apps/notification-service",

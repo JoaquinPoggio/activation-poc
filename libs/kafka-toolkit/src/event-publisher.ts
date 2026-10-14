@@ -40,4 +40,12 @@ export class EventPublisher implements OnModuleInit, OnModuleDestroy {
     );
     this.logger.log(`Publicado ${event.eventType} [${event.correlationId}] en ${topic}`);
   }
+
+  // Publica un mensaje tal cual en un topic (lo usa la DLQ)
+  async publishRaw(
+    topic: string,
+    message: { key?: string; value: string; headers?: Record<string, string> },
+  ): Promise<void> {
+    await lastValueFrom(this.client.emit(topic, message));
+  }
 }

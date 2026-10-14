@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import type { ClientSession } from 'mongoose';
 import { createEvent, type DomainEvent } from '@app/contracts';
-import { EventPublisher } from '@app/kafka-toolkit';
+import { EventPublisher, IdempotencyService } from '@app/kafka-toolkit';
 import { BillingAccount } from './billing.schema.js';
 
 @Injectable()
@@ -12,9 +13,29 @@ export class BillingService {
   constructor(
     @InjectModel(BillingAccount.name) private readonly model: Model<BillingAccount>,
     private readonly publisher: EventPublisher,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   async onActivationRequested(event: DomainEvent<'ActivationRequested'>) {
+    const first = await this.idempotency.runOnce(event.eventId, (session) =>
+      this.createAccount(event, session),
+    );
+    if (!first) {
+      this.logger.warn(`Evento repetido ${event.eventType} [${event.correlationId}]: descartado`);
+    }
+  }
+
+  // Compensación: la activación falló, se anula la cuenta si existía
+  async onActivationFailed(event: DomainEvent<'ActivationFailed'>) {
+    const first = await this.idempotency.runOnce(event.eventId, (session) =>
+      this.cancelAccount(event, session),
+    );
+    if (!first) {
+      this.logger.warn(`Evento repetido ${event.eventType} [${event.correlationId}]: descartado`);
+    }
+  }
+
+  private async createAccount(event: DomainEvent<'ActivationRequested'>, session: ClientSession) {
     const { correlationId, customerId, payload } = event;
 
     // Fallo de negocio simulado: se publica como evento, no es un error técnico
@@ -31,13 +52,12 @@ export class BillingService {
       return;
     }
 
-    // Crea la cuenta. Si ya existe un registro (p. ej. porque ActivationFailed llegó
-    // antes), se conserva su estado y solo se completa el accountId.
+    // Crea la cuenta. Si ya existe un registro (p. ej. ActivationFailed llegó antes), conserva su estado.
     const accountId = `acc-${correlationId}`;
     const account = await this.model.findOneAndUpdate(
       { activationId: correlationId },
       { $set: { accountId }, $setOnInsert: { customerId, status: 'CREATED' } },
-      { upsert: true, new: true },
+      { upsert: true, new: true, session },
     );
 
     // Caso borde: el fallo ya había llegado. La cuenta se creó, pero se anula igual.
@@ -58,19 +78,17 @@ export class BillingService {
     );
   }
 
-  // Compensación: la activación falló, se anula la cuenta si existía
-  async onActivationFailed(event: DomainEvent<'ActivationFailed'>) {
+  private async cancelAccount(event: DomainEvent<'ActivationFailed'>, session: ClientSession) {
     const { correlationId, customerId, payload } = event;
 
     // new: false devuelve el documento ANTES del cambio (o null si no existía)
     const before = await this.model.findOneAndUpdate(
       { activationId: correlationId },
       { $set: { status: 'CANCELLED' }, $setOnInsert: { customerId } },
-      { upsert: true, new: false },
+      { upsert: true, new: false, session },
     );
 
     if (!before) {
-      // Todavía no había cuenta: queda registrado el fallo para anularla si se crea después
       this.logger.log(`Sin cuenta para anular [${correlationId}]; queda registrado el fallo`);
       return;
     }

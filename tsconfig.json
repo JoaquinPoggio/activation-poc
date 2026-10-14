@@ -38,11 +38,7 @@
     }
   },
   "files": [],
-  "references": [
-    {
-      "path": "./apps/activation-poc/tsconfig.app.json"
-    },
-    {
+  "references": [{
       "path": "./apps/activation-api/tsconfig.app.json"
     },
     {
@@ -56,6 +52,9 @@
     },
     {
       "path": "./apps/crm-analytics-service/tsconfig.app.json"
+    },
+    {
+      "path": "./apps/loyalty-service/tsconfig.app.json"
     }
   ]
 }
