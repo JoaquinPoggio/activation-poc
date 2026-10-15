@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import type { Model } from 'mongoose';
 import { createEvent } from '@app/contracts';
 import { EventPublisher } from '@app/kafka-toolkit';
 import { Activation } from './activation.schema.js';

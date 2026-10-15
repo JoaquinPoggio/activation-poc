@@ -1,4 +1,20 @@
+# Variables y base comunes a todos los servicios Nest
+x-app-env: &app-env
+  KAFKA_BROKERS: kafka:19092
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.node
+  restart: unless-stopped
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+    mongo:
+      condition: service_healthy
+
 services:
+  # ---------- Infraestructura ----------
   kafka:
     image: apache/kafka:3.9.0
     container_name: kafka
@@ -65,6 +81,62 @@ services:
     ports:
       - "8025:8025"
       - "1025:1025"
+
+  # ---------- Servicios ----------
+  activation-api:
+    <<: *app
+    command: ["npx", "nest", "start", "activation-api", "--builder", "tsc"]
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *app-env
+      MONGO_URI: mongodb://mongo:27017/activation-api?replicaSet=rs0
+
+  billing-service:
+    <<: *app
+    command: ["npx", "nest", "start", "billing-service", "--builder", "tsc"]
+    environment:
+      <<: *app-env
+      MONGO_URI: mongodb://mongo:27017/billing?replicaSet=rs0
+
+  provisioning-service:
+    <<: *app
+    command: ["npx", "nest", "start", "provisioning-service", "--builder", "tsc"]
+    environment:
+      <<: *app-env
+      MONGO_URI: mongodb://mongo:27017/provisioning?replicaSet=rs0
+
+  notification-service:
+    <<: *app
+    command: ["npx", "nest", "start", "notification-service", "--builder", "tsc"]
+    environment:
+      <<: *app-env
+      MONGO_URI: mongodb://mongo:27017/notification?replicaSet=rs0
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+
+  crm-analytics-service:
+    <<: *app
+    command: ["npx", "nest", "start", "crm-analytics-service", "--builder", "tsc"]
+    environment:
+      <<: *app-env
+      MONGO_URI: mongodb://mongo:27017/crm-analytics?replicaSet=rs0
+
+  # Solo se levanta con: docker compose --profile loyalty up -d loyalty-service
+  loyalty-service:
+    <<: *app
+    profiles: ["loyalty"]
+    command: ["npx", "nest", "start", "loyalty-service", "--builder", "tsc"]
+    environment:
+      <<: *app-env
+      MONGO_URI: mongodb://mongo:27017/loyalty?replicaSet=rs0
+
+  demo-ui:
+    build: ./apps/demo-ui
+    ports:
+      - "5173:80"
+    depends_on:
+      - activation-api
 
 volumes:
   mongo-data:

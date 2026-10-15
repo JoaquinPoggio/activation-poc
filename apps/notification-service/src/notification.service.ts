@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import type { Model } from 'mongoose';
 import type { ClientSession } from 'mongoose';
 import { createTransport } from 'nodemailer';
 import type { DomainEvent } from '@app/contracts';

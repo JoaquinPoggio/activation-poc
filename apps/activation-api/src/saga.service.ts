@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import type { Model } from 'mongoose';
 import type { ClientSession } from 'mongoose';
 import { createEvent, type DomainEvent, type EventType } from '@app/contracts';
 import { EventPublisher, IdempotencyService } from '@app/kafka-toolkit';

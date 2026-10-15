@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { KafkaContext } from '@nestjs/microservices';
-import { Model } from 'mongoose';
+import type { Model } from 'mongoose';
 import type { DomainEvent } from '@app/contracts';
 import { EventLog } from './event-log.schema.js';
 

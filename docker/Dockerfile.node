@@ -1,0 +1,11 @@
+FROM node:24-alpine
+WORKDIR /app
+
+# Primero las dependencias: esta capa se cachea y no se reinstala si no cambia package.json
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+# Cada servicio define su propio comando en docker-compose.yml
+CMD ["npx", "nest", "start", "activation-api", "--builder", "tsc"]

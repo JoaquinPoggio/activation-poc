@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import type { Model } from 'mongoose';
 import type { DomainEvent } from '@app/contracts';
 import { IdempotencyService } from '@app/kafka-toolkit';
 import { LoyaltyAccount } from './loyalty.schema.js';
